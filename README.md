@@ -10,7 +10,7 @@ Developed to bridge the gap between network operations and systems programming, 
 
 ## 📖 Engineering Journal & Insights
 
-I am documenting Aether's development in my [blog](https://joaosousadev.pt/blog).
+I am documenting Aether's development in my [blog](https://joaosousadev.pt/#/blog).
 
 Adding to the blog posts, a less processed version of them can be found in `/docs`, where I'm constantly updating my learning/study notes (`/notes`), as well as some bugs/challenges I've encountered along the development process and how I approached them (`/war-room`).
 
