@@ -47,7 +47,6 @@
 *.pdb
 
 # Kernel Module Compile Results
-*.mod*
 *.cmd
 .tmp_versions/
 modules.order
@@ -78,3 +77,11 @@ go.work
 # Obsidian
 /docs/.obsidian 
 /docs/post-drafts
+
+# Project Structure
+/project-structure.txt
+
+# Executables and binaries
+aether-ctl
+*.exe
+__debug_bin
