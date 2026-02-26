@@ -41,14 +41,14 @@ Custom eBPF exporters push P99 tail latency and packet processing timestamps dir
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   Controller Cluster                 │
+│                   Controller Cluster                │
 │  ┌──────────┐   ┌──────────┐   ┌──────────┐         │
 │  │CtrlNode 1│   │CtrlNode 2│   │CtrlNode 3│         │
 │  └────┬─────┘   └────┬─────┘   └────┬─────┘         │
-│       └──────────────┼──────────────┘                │
-│              Consistent Hash Ring                    │
-│              etcd (distributed state)                │
-│              SWIM (membership/discovery)             │
+│       └──────────────┼──────────────┘               │
+│              Consistent Hash Ring                   │
+│              etcd (distributed state)               │
+│              SWIM (membership/discovery)            │
 └─────────────────────┬───────────────────────────────┘
                       │ gRPC
         ┌─────────────┼─────────────┐
