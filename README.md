@@ -1,72 +1,173 @@
-# Aether: The Global Edge Control Plane
+# Aether: Global Edge Control Plane
 
-**Aether** is a high-performance, distributed control plane designed to orchestrate self-healing BGP network meshes across hybrid-cloud environments. 
+**Aether** is a production-grade, distributed control plane for orchestrating self-healing BGP network meshes across hybrid-cloud environments.
 
-Developed to bridge the gap between network operations and systems programming, Aether combines **Consistent Hashing** for distributed orchestration and **XDP/eBPF** for a high-speed data plane. It demonstrates a production-grade approach to building modern, resilient internet infrastructure.
+Built entirely in Go, it combines a **Consistent Hash Ring** for distributed orchestration, **Netlink** for kernel-level network configuration, and **XDP/eBPF** for a high-speed data plane that bypasses the standard Linux networking stack.
 
-> **The Elevator Pitch:** A Go-based distributed control plane that uses consistent hashing to manage a self-healing BGP network mesh, utilizing XDP/eBPF for a high-performance data plane and kernel-level observability.
+> **The Elevator Pitch:** A Go-based distributed control plane that uses consistent hashing to manage a self-healing BGP mesh, utilizing XDP/eBPF for kernel-level packet processing and deep observability — engineered with the same operational patterns used in production infrastructure at scale.
 
 ---
 
-## 📖 Engineering Journal & Insights
+## 📖 Engineering Journal
 
-I am documenting Aether's development in my [blog](https://joaosousadev.pt/#/blog).
+Development is documented in real time:
 
-Adding to the blog posts, a less processed version of them can be found in `/docs`, where I'm constantly updating my learning/study notes (`/notes`), as well as some bugs/challenges I've encountered along the development process and how I approached them (`/war-room`).
+- **[Blog](https://joaosousadev.pt/#/blog)** — In-depth posts on architecture decisions and implementation.
+- **[`/docs/notes`](./docs/notes)** — Raw study notes and Go/systems patterns encountered during development.
+- **[`/docs/war-room`](./docs/war-room)** — Debugging logs: real bugs, root cause analysis, and how they were resolved. Not curated. Worth reading if you want to understand how problems actually get solved at the kernel level.
 
 ---
 
 ## 🚀 Key Features
 
-* **High-Speed Data Plane:** XDP-based packet filtering and DDoS mitigation at the NIC driver level, bypassing the standard Linux networking stack for minimal latency.
-* **Distributed Orchestration:** Multi-node control plane featuring peer discovery via the SWIM protocol and global state synchronization via `etcd`.
-* **Resilient Routing:** Anycast BGP implementation integrated with BFD (Bidirectional Forwarding Detection) for sub-second link failure detection and failover.
-* **State Reconciliation:** A Kubernetes-style "Control Loop" that monitors and automatically repairs Linux network namespaces and link configurations (reclaiming "State Drift").
-* **Deep Observability:** Custom eBPF exporters for Prometheus to track P99 tail latency and packet processing time directly from the Linux kernel.
+**High-Speed Data Plane**
+XDP-based packet filtering and DDoS mitigation runs at the NIC driver level, before the kernel networking stack is even involved. Latency overhead is measured in nanoseconds.
+
+**Distributed Orchestration**
+Multi-node control plane with peer discovery via the SWIM protocol (`memberlist`) and global state synchronization via `etcd`. Node assignment uses a consistent hash ring for deterministic, rebalance-aware distribution.
+
+**Resilient Routing**
+Anycast BGP via GoBGP, integrated with BFD (Bidirectional Forwarding Detection) for sub-second link failure detection and automatic failover between regions.
+
+**State Reconciliation**
+A Kubernetes-style control loop continuously monitors Linux network namespaces and veth configurations. If state drifts (interfaces deleted, namespaces missing), it detects and repairs automatically — no manual intervention.
+
+**Deep Observability**
+Custom eBPF exporters push P99 tail latency and packet processing timestamps directly from the kernel to Prometheus. No userspace sampling overhead.
 
 ---
 
-## 🏗 System Architecture
+## 🏗 Architecture
 
-Aether follows a decoupled architecture designed for massive scale:
+```
+┌─────────────────────────────────────────────────────┐
+│                   Controller Cluster                 │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐         │
+│  │CtrlNode 1│   │CtrlNode 2│   │CtrlNode 3│         │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘         │
+│       └──────────────┼──────────────┘                │
+│              Consistent Hash Ring                    │
+│              etcd (distributed state)                │
+│              SWIM (membership/discovery)             │
+└─────────────────────┬───────────────────────────────┘
+                      │ gRPC
+        ┌─────────────┼─────────────┐
+        ▼             ▼             ▼
+   ┌─────────┐   ┌─────────┐   ┌─────────┐
+   │  Edge   │   │  Edge   │   │  Edge   │
+   │  Node   │   │  Node   │   │  Node   │
+   │         │   │         │   │         │
+   │ Netlink │   │ Netlink │   │ Netlink │
+   │ XDP/BPF │   │ XDP/BPF │   │ XDP/BPF │
+   │ GoBGP   │   │ GoBGP   │   │ GoBGP   │
+   └─────────┘   └─────────┘   └─────────┘
+```
 
-1.  **The Brain (Controller):** A distributed cluster managing the global network map. It utilizes a **Consistent Hash Ring** to assign specific edge nodes to controllers, ensuring high availability and seamless rebalancing during cluster changes.
-2.  **The Agent (Edge Node):** A lightweight Go daemon running on Linux nodes. It manages local Netlink configurations (Namespaces, Veth pairs) and dynamically loads/updates eBPF programs.
+**Controller** — Distributed cluster managing the global network map. Assigns edge nodes to controllers via a consistent hash ring; rebalances automatically on membership changes.
 
-
+**Edge Agent** — Lightweight Go daemon on each Linux node. Manages local Netlink state (namespaces, veth pairs), dynamically loads eBPF programs, and maintains BGP sessions.
 
 ---
 
-## 🗺 Roadmap & Progress
+## 🗺 Roadmap
 
-### Phase 1: High-Performance Data Plane 🟡 (In Progress)
-- [ ] **Netlink Controller:** Lifecycle management of Namespaces and Veth pairs using `vishvananda/netlink`.
-- [ ] **XDP DDoS Mitigator:** Kernel-level packet dropping via eBPF maps and XDP hooks.
-- [ ] **State Drift Detection:** Auto-recovery loop for deleted network interfaces.
+### Phase 1: High-Performance Data Plane 🟡 In Progress
+
+- [x] **Netlink Controller** — Full lifecycle management of network namespaces and veth pairs using `vishvananda/netlink`. Implemented with namespace-scoped `netlink.Handle` instances to avoid thread-namespace coupling bugs. Includes idempotent reconciliation and partial-state detection.
+- [ ] **XDP DDoS Mitigator** — Kernel-level packet dropping via eBPF maps and XDP hooks.
+- [ ] **State Drift Detection** — Auto-recovery loop for deleted or misconfigured network interfaces.
 
 ### Phase 2: Resilient Routing ⚪
-- [ ] **GoBGP Integration** for Anycast service advertising.
-- [ ] **BFD implementation** for sub-second failure detection between cloud regions.
-- [ ] **Chaos Engineering Suite:** Automated simulation of jitter, packet loss, and MTU mismatches.
+
+- [ ] **GoBGP Integration** — Anycast service advertising.
+- [ ] **BFD Implementation** — Sub-second failure detection between cloud regions.
+- [ ] **Chaos Engineering Suite** — Automated simulation of jitter, packet loss, and MTU mismatches.
 
 ### Phase 3: Distributed Brain ⚪
-- [ ] **Consistent Hashing** ring implementation for node assignment.
-- [ ] **SWIM Protocol** (`memberlist`) for controller cluster membership.
-- [ ] **etcd integration** for distributed source of truth and leader election.
+
+- [ ] **Consistent Hash Ring** — Node assignment with automatic rebalancing.
+- [ ] **SWIM Protocol** (`memberlist`) — Controller cluster membership and failure detection.
+- [ ] **etcd Integration** — Distributed source of truth and leader election.
 
 ### Phase 4: Observability, Automation & Performance ⚪
-- [ ] **eBPF Latency Tracker:** Using `cilium/ebpf` to capture kernel-level timestamps for P99 Tail Latency.
-- [ ] **Performance Audit:** Comparative load testing of XDP vs. standard `iptables` throughput.
-- [ ] **Custom Terraform Provider:** Automating infrastructure via HCL-defined `aether_node` resources.
-- [ ] **SLO-Based Alerting:** Grafana dashboard implementation for real-time monitoring of Service Level Objectives.
+
+- [ ] **eBPF Latency Tracker** — Kernel-level timestamps for P99 tail latency via `cilium/ebpf`.
+- [ ] **Performance Audit** — Comparative load testing of XDP vs. standard `iptables`.
+- [ ] **Custom Terraform Provider** — HCL-defined `aether_node` resources.
+- [ ] **SLO-Based Alerting** — Grafana dashboard for real-time SLO monitoring.
+
 ---
 
 ## 🛠 Tech Stack
 
-* **Language:** Go (Golang), C (Restricted C for eBPF)
-* **Networking:** BGP, Anycast, Netlink, BFD, SR-MPLS
-* **Kernel Tech:** XDP, eBPF Maps, Linux Namespaces, Syscalls (`strace`)
-* **Distributed Systems:** etcd, gRPC, Hashicorp Memberlist
-* **Infrastructure:** Terraform (Custom Provider), Prometheus, Grafana
+| Layer | Technology |
+|---|---|
+| Language | Go, C (restricted eBPF) |
+| Networking | BGP (GoBGP), Anycast, BFD, SR-MPLS |
+| Kernel | XDP, eBPF Maps, Linux Namespaces, Netlink, `strace` |
+| Distributed Systems | etcd, gRPC, Hashicorp Memberlist |
+| Observability | Prometheus, Grafana, custom eBPF exporters |
+| Infrastructure | Terraform (Custom Provider) |
 
 ---
+
+## ⚡ Quick Start
+
+**Requirements:** Linux (Ubuntu 24.04 recommended), Go 1.21+, root access.
+
+```bash
+# Clone the repository
+git clone https://github.com/sousa16/aether.git
+cd aether
+
+# Install system dependencies and Go modules
+# Installs: build-essential, libelf-dev, llvm, clang, iproute2, strace
+sudo ./setup.sh
+
+# Build
+make build
+
+# Run (requires root for Netlink/namespace operations)
+sudo ./aether-ctl
+
+# Test (also requires root)
+make test
+
+# Remove built binaries
+make clean
+```
+
+> **Note:** Netlink and XDP operations require `CAP_NET_ADMIN`. All network state created by `aether-ctl` can be torn down with `sudo ip netns del aether-ns && sudo ip link del veth-host`.
+
+---
+
+## 📁 Repository Structure
+
+```
+aether/
+├── src/
+│   └── cmd/
+│       └── netlink-controller/         # Phase 1: namespace & veth lifecycle
+│           ├── main.go
+│           └── main_test.go
+├── docs/
+│   ├── notes/
+│   │   ├── getting-started-with-ebpf/
+│   │   │   ├── ebpf-basics.md          # eBPF fundamentals, maps, programs
+│   │   │   └── ebpf-for-networking.md  # XDP, TC hooks, container networking
+│   │   └── go-patterns.md             # Go patterns encountered during development
+│   ├── images/                         # Diagrams and screenshots for notes
+│   └── war-room/
+│       └── phase-1/
+│           └── netlink-controller.md   # Debugging log: thread-namespace coupling bug
+├── Makefile                            # build, test, clean targets
+├── setup.sh                            # Installs system deps + Go modules
+├── go.mod
+└── LICENSE
+```
+
+---
+
+## 📄 License
+
+MIT
