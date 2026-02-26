@@ -30,7 +30,7 @@ Multi-node control plane with peer discovery via the SWIM protocol (`memberlist`
 Anycast BGP via GoBGP, integrated with BFD (Bidirectional Forwarding Detection) for sub-second link failure detection and automatic failover between regions.
 
 **State Reconciliation**
-A Kubernetes-style control loop continuously monitors Linux network namespaces and veth configurations. If state drifts (interfaces deleted, namespaces missing), it detects and repairs automatically — no manual intervention.
+A Kubernetes-style control loop continuously monitors Linux network namespaces, veth configurations, and attached XDP programs. If state drifts — interfaces deleted, namespaces missing, eBPF programs manually detached — it detects and re-applies the desired configuration automatically.
 
 **Deep Observability**
 Custom eBPF exporters push P99 tail latency and packet processing timestamps directly from the kernel to Prometheus. No userspace sampling overhead.
@@ -74,25 +74,27 @@ Custom eBPF exporters push P99 tail latency and packet processing timestamps dir
 ### Phase 1: High-Performance Data Plane 🟡 In Progress
 
 - [x] **Netlink Controller** — Full lifecycle management of network namespaces and veth pairs using `vishvananda/netlink`. Implemented with namespace-scoped `netlink.Handle` instances to avoid thread-namespace coupling bugs. Includes idempotent reconciliation and partial-state detection.
-- [ ] **XDP DDoS Mitigator** — Kernel-level packet dropping via eBPF maps and XDP hooks.
-- [ ] **State Drift Detection** — Auto-recovery loop for deleted or misconfigured network interfaces.
+- [ ] **XDP DDoS Mitigator** — C-based eBPF program attached to the XDP hook for NIC-level packet processing. Go control plane populates eBPF Maps with blacklisted IPs to drop malicious traffic before it touches the kernel networking stack.
+- [ ] **State Drift Detection** — Auto-recovery loop that detects and repairs state drift: deleted interfaces, missing namespaces, and detached XDP programs.
 
 ### Phase 2: Resilient Routing ⚪
 
-- [ ] **GoBGP Integration** — Anycast service advertising.
-- [ ] **BFD Implementation** — Sub-second failure detection between cloud regions.
-- [ ] **Chaos Engineering Suite** — Automated simulation of jitter, packet loss, and MTU mismatches.
+- [ ] **GoBGP Integration** — Anycast service advertising across multi-cloud nodes via a single Service IP.
+- [ ] **BFD Implementation** — Sub-second link failure detection between cloud regions, catching failures that standard BGP timers miss.
+- [ ] **Chaos Sidecar** — `tc`-based utility to inject packet loss, 250ms latency, and PMTU discovery failures for resilience testing.
+- [ ] **Route Dampening** — Flapping node detection: quarantine nodes that join/leave too rapidly to prevent BGP convergence storms and CPU spikes.
 
 ### Phase 3: Distributed Brain ⚪
 
-- [ ] **Consistent Hash Ring** — Node assignment with automatic rebalancing.
-- [ ] **SWIM Protocol** (`memberlist`) — Controller cluster membership and failure detection.
-- [ ] **etcd Integration** — Distributed source of truth and leader election.
+- [ ] **Consistent Hash Ring** — Node assignment with automatic rebalancing on controller membership changes.
+- [ ] **SWIM Protocol** (`memberlist`) — Controller cluster membership and peer failure detection.
+- [ ] **etcd Integration** — Distributed source of truth and leader election via etcd Watches and Leases.
+- [ ] **Leader-Kill Experiment** — Trigger a BGP update storm and kill the etcd leader simultaneously; measure Time to Recovery (TTR) and BGP convergence time.
 
 ### Phase 4: Observability, Automation & Performance ⚪
 
 - [ ] **eBPF Latency Tracker** — Kernel-level timestamps for P99 tail latency via `cilium/ebpf`.
-- [ ] **Performance Audit** — Comparative load testing of XDP vs. standard `iptables`.
+- [ ] **Performance Audit** — Load test XDP filter against standard `iptables`; document CPU usage and throughput differences.
 - [ ] **Custom Terraform Provider** — HCL-defined `aether_node` resources.
 - [ ] **SLO-Based Alerting** — Grafana dashboard for real-time SLO monitoring.
 
